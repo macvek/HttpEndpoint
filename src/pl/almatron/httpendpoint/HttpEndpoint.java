@@ -1,23 +1,14 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package pl.almatron.httpendpoint;
 
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.Writer;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -186,14 +177,14 @@ public class HttpEndpoint {
             }
         }
     }
-   
+    
     static private class HttpRequestBuffer {
         private final InputStream inputStream;
         private byte[] buffer;
         private int endOfFirstLine;
         private int headersTermination;
-        private static int rotateSize = 512;
-        private static int rotateTimesLimit = 3;
+        private final static int rotateSize = 512;
+        private final static int rotateTimesLimit = 3;
         private int rotateTimesCounter = rotateTimesLimit;
         private boolean endOfStream;
         private boolean allowedEndOfStream;
@@ -204,8 +195,8 @@ public class HttpEndpoint {
         private String query;
         private String protocol;
         
-        private int[] headerIndexes;
-        private static int maxHeaders = 32;
+        private final int[] headerIndexes;
+        private final static int maxHeaders = 32;
         private int headerPointer = 0;
         
         private static final Charset usAscii = Charset.forName("US-ASCII");
@@ -410,8 +401,7 @@ public class HttpEndpoint {
                     socket.close();
                 }
                 catch(IOException e) {
-                    System.out.println("Trying to close already closed socket");
-                    e.printStackTrace();
+                    Logger.getGlobal().log(Level.SEVERE, "Trying to close already closed socket", e);
                 }
             }
         }
