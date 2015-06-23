@@ -14,6 +14,8 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,12 +57,18 @@ public class HttpEndpoint {
 
     private void stop() {
         try {
-            executorService.shutdown();
-            executorService.awaitTermination(5, TimeUnit.SECONDS);
+            shutdownExecutor();
+            shutdownSockets();
+            
             serverSocket.close();
         } catch (InterruptedException | IOException ex) {
             Logger.getLogger(HttpEndpoint.class.getName()).log(Level.SEVERE, null, ex);
         }
+    }
+
+    private void shutdownExecutor() throws InterruptedException {
+        executorService.shutdown();
+        executorService.awaitTermination(5, TimeUnit.SECONDS);
     }
 
     private void waitForAcceptor() {
@@ -73,13 +81,27 @@ public class HttpEndpoint {
 
     
     
+    private int watchdog = 1;
+
+    private synchronized void shutdownSockets() {
+        clientSocketDelegates.stream().forEach(
+                (ClientSocketDelegate delegate) -> {
+                    delegate.closeConnection();
+                }
+        );
+    }
+    
     private class Acceptor implements Runnable{
 
         @Override
         public void run() {
             try {
-
-                acceptConnectionsAndDelegate();
+                for(;;) {
+                    acceptConnectionsAndDelegate();
+                    if (--watchdog == 0) {
+                        break;
+                    }
+                }
                 
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
@@ -87,22 +109,63 @@ public class HttpEndpoint {
         }
         
         private void acceptConnectionsAndDelegate() throws IOException {
-            executorService.execute(
-                    new ClientSocketDelegate(serverSocket.accept()
-            ));
+            final ClientSocketDelegate clientSocketDelegate = new ClientSocketDelegate(serverSocket.accept());
+            executorService.execute(clientSocketDelegate);
             
         }
     }
     
-    private static class ClientSocketDelegate extends RunnableWithThrow{
-        private Socket socket;
-
+    private final HashSet<ClientSocketDelegate> clientSocketDelegates = new HashSet<>();
+    
+    private synchronized void addClientSocketDelegate(ClientSocketDelegate delegate) {
+        clientSocketDelegates.add(delegate);
+    }
+    
+    private synchronized void removeClientSocketDelegate(ClientSocketDelegate delegate) {
+        clientSocketDelegates.remove(delegate);
+    }
+    
+    private class ClientSocketDelegate implements Runnable {
+        private final Socket socket;
+        private boolean done;
+        private boolean connectionCloseForced;
+        
         public ClientSocketDelegate(Socket socket) {
             this.socket = socket;
         }
-                
+        
         @Override
-        public void runWithThrow() throws IOException {
+        public void run() {
+            try {
+                addClientSocketDelegate(this);
+                handleConnection();
+            }
+            catch (IOException e) {
+                if (!connectionCloseForced) {
+                    throw new RuntimeException(e);
+                }
+            }
+            finally {
+                removeClientSocketDelegate(this);
+                done = true;
+            }
+            
+        }
+        
+        public void closeConnection() {
+            if (!done) {
+                try {
+                    connectionCloseForced = true;
+                    socket.close();
+                }
+                catch(IOException e) {
+                    System.out.println("Trying to close already closed socket");
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        private void handleConnection() throws IOException {
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String line = reader.readLine();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
@@ -111,7 +174,7 @@ public class HttpEndpoint {
             socket.close();
         }
     }
-
+    
     public void setHostname(String hostname) {
         this.hostname = hostname;
     }
