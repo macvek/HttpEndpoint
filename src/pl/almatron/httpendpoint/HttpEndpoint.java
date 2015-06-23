@@ -5,13 +5,21 @@
  */
 package pl.almatron.httpendpoint;
 
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Writer;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,7 +34,7 @@ import java.util.logging.Logger;
  */
 public class HttpEndpoint {
     
-    private ExecutorService executorService = Executors.newCachedThreadPool();
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
     private ServerSocket serverSocket;
     
     private String hostname;
@@ -120,7 +128,65 @@ public class HttpEndpoint {
     private synchronized void removeClientSocketDelegate(ClientSocketDelegate delegate) {
         clientSocketDelegates.remove(delegate);
     }
-    
+        
+    static private class HttpResponseBuffer {
+        private static final Charset usAscii = Charset.forName("US-ASCII");
+        private static final List<byte[]> baseHeaders = Arrays.asList(
+                "Connection: close\r\n".getBytes(usAscii),
+                "Server: HttpEndpoint\r\n".getBytes(usAscii)
+        );
+        private final OutputStream outputStream;
+        private final ArrayList<byte[]> headers = new ArrayList<>(baseHeaders);
+        private byte[] responseBody;
+        
+        private int contentLength;
+        
+        public HttpResponseBuffer(OutputStream outputStream) {
+            this.outputStream = outputStream;
+        }
+
+        public void setResponseBody(byte[] responseBody) {
+            contentLength = responseBody.length;
+            this.responseBody = responseBody;
+        }
+        
+        public void setContentType(String contentType) {
+            addHeader("Content-Type: "+contentType);
+        }
+
+        private void addHeader(String header) {
+            headers.add( (header+"\r\n").getBytes(usAscii));
+        }
+        
+        public void send() {
+            try {
+                sendStatus();
+                sendHeaders();
+                
+                sendResponseBody();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+
+        private void sendHeaders() throws IOException {
+            for (byte[] header : headers) {
+                outputStream.write(header);
+            }
+            outputStream.write(("Content-Length: "+contentLength+"\r\n\r\n").getBytes(usAscii));
+        }
+
+        private void sendStatus() throws IOException {
+            outputStream.write("HTTP /1.1 200 OK\r\n".getBytes(usAscii));
+        }
+
+        private void sendResponseBody() throws IOException {
+            if (responseBody != null) {
+                outputStream.write(responseBody);
+            }
+        }
+    }
+   
     static private class HttpRequestBuffer {
         private final InputStream inputStream;
         private byte[] buffer;
@@ -351,17 +417,22 @@ public class HttpEndpoint {
         }
 
         private void handleConnection() throws IOException {
-            HttpRequestBuffer buffer = new HttpRequestBuffer(socket.getInputStream());
-            buffer.readFirstLine();
-            System.out.println("Method:"+buffer.getMethod());
-            System.out.println("Query:"+buffer.getQuery());
-            System.out.println("Protocol:"+buffer.getProtocol());
+            HttpRequestBuffer requestBuffer = new HttpRequestBuffer(socket.getInputStream());
+            requestBuffer.readFirstLine();
+            System.out.println("Method:"+requestBuffer.getMethod());
+            System.out.println("Query:"+requestBuffer.getQuery());
+            System.out.println("Protocol:"+requestBuffer.getProtocol());
             
-            buffer.saveHeaders();
+            requestBuffer.saveHeaders();
             
-            for (String header : buffer.readHeaders()) {
+            for (String header : requestBuffer.readHeaders()) {
                 System.out.println(header);
             }
+            
+            HttpResponseBuffer responseBuffer = new HttpResponseBuffer(socket.getOutputStream());
+            responseBuffer.setContentType("text/html");
+            responseBuffer.setResponseBody("<html><h1>Hello World</h1></html>".getBytes());
+            responseBuffer.send();
             socket.close();
         }
         
