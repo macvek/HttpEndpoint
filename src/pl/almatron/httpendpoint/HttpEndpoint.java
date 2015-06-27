@@ -27,6 +27,8 @@ public class HttpEndpoint {
 
     private Acceptor acceptor;
     private Future<?> acceptorStatus;
+    
+    private boolean stopTriggered;
 
     public void start() {
         try {
@@ -40,34 +42,40 @@ public class HttpEndpoint {
         try {
             acceptorStatus.get();
         } catch (InterruptedException | ExecutionException ex) {
-            Logger.getLogger(HttpEndpoint.class.getName()).log(Level.SEVERE, null, ex);
+            if (!stopTriggered) {
+                Logger.getLogger(getClass().getName()).log(Level.SEVERE, "Unexpected accepting socket termination", ex);
+            }
         }
     }
 
     public void stop() {
+        Logger.getLogger(getClass().getName()).log(Level.INFO, "Stop triggered, shutting down server and client sockets");
+        
         try {
+            stopTriggered = true;
+            acceptor.shutdown();
             shutdownExecutor();
             shutdownSockets();
-
-            serverSocket.close();
-        } catch (InterruptedException | IOException ex) {
-            Logger.getLogger(HttpEndpoint.class.getName()).log(Level.SEVERE, null, ex);
+            
+        } catch (InterruptedException ex) {
+            Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);
         }
+        Logger.getLogger(getClass().getName()).log(Level.INFO, "HttpEndpoint is stopped");
     }
 
     private void startWithExceptions() throws Exception {
+        Logger.getLogger(getClass().getName()).log(Level.INFO, "Starting HttpEndpoint");
         serverSocket = new ServerSocket();
         serverSocket.bind(new InetSocketAddress(hostname, port));
         acceptor = new Acceptor();
         acceptorStatus = executorService.submit(acceptor);
+        Logger.getLogger(getClass().getName()).log(Level.INFO, "Started HttpEndpoint");
     }
 
     private void shutdownExecutor() throws InterruptedException {
         executorService.shutdown();
         executorService.awaitTermination(5, TimeUnit.SECONDS);
     }
-
-    private int watchdog = 2;
 
     private synchronized void shutdownSockets() {
         clientSocketDelegates.stream().forEach(
@@ -78,19 +86,21 @@ public class HttpEndpoint {
     }
 
     private class Acceptor implements Runnable {
-
+        private boolean online;
+        
         @Override
         public void run() {
             try {
-                for (;;) {
+                online = true;
+                Logger.getLogger(getClass().getName()).log(Level.INFO, "Waiting for connections...");
+                while(online) {
                     acceptConnectionsAndDelegate();
-                    if (--watchdog == 0) {
-                        break;
-                    }
                 }
 
             } catch (IOException ex) {
-                throw new RuntimeException(ex);
+                if (!online) {
+                    throw new RuntimeException(ex);
+                }
             }
         }
 
@@ -98,6 +108,18 @@ public class HttpEndpoint {
             final ClientSocketDelegate clientSocketDelegate = new ClientSocketDelegate(serverSocket.accept());
             executorService.execute(clientSocketDelegate);
 
+        }
+        
+        private void shutdown() {
+            if (online) {
+                online = false;
+                try {
+                    serverSocket.close();
+                }
+                catch(IOException ex) {
+                     Logger.getLogger(getClass().getName()).log(Level.SEVERE, "Unexpected exception while closing server socket", ex);
+                }
+            }
         }
     }
 
@@ -143,7 +165,7 @@ public class HttpEndpoint {
                     connectionCloseForced = true;
                     socket.close();
                 } catch (IOException e) {
-                    Logger.getGlobal().log(Level.SEVERE, "Trying to close already closed socket", e);
+                    Logger.getLogger(getClass().getName()).log(Level.SEVERE, "Trying to close already closed socket", e);
                 }
             }
         }
