@@ -1,12 +1,21 @@
 <!doctype html>
 <html>
     <body>
-        <h1 style="color:blue">Hello World!</h1>
-        <form method="post">
+        <h1 style="color:green">Hello World!</h1>
+        <h2>application/x-www-form-urlencoded</h2>
+        <form method="post" enctype="application/x-www-form-urlencoded">
             <input type="text" name="textfield" value="textValue" />
             <input type="hidden" name="hiddenfield" value="hiddenValue" />
-            <input type="submit" name="submitfield" value="SubmitValue" />
-            
+            <input type="submit" name="submitfield" value="Submit URL ENCODED" />
+            <input type="file" name="filefield"  />
+        </form>
+        
+        <h2>enctype="multipart/form-data"</h2>
+        <form method="post" enctype="multipart/form-data">
+            <input type="text" name="textfield" value="textValue" />
+            <input type="hidden" name="hiddenfield" value="hiddenValue" />
+            <input type="submit" name="submitfield" value="Submit MULTIPART FORM DATA" />
+            <input type="file" name="filefield"  />
         </form>
     </body>
     
