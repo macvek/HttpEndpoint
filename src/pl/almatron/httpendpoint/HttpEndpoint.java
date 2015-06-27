@@ -76,7 +76,7 @@ public class HttpEndpoint {
 
     
     
-    private int watchdog = 1;
+    private int watchdog = 2;
 
     private synchronized void shutdownSockets() {
         clientSocketDelegates.stream().forEach(
@@ -168,7 +168,7 @@ public class HttpEndpoint {
         }
 
         private void sendStatus() throws IOException {
-            outputStream.write("HTTP /1.1 200 OK\r\n".getBytes(usAscii));
+            outputStream.write("HTTP/1.1 200 OK\r\n".getBytes(usAscii));
         }
 
         private void sendResponseBody() throws IOException {
@@ -421,7 +421,15 @@ public class HttpEndpoint {
             
             HttpResponseBuffer responseBuffer = new HttpResponseBuffer(socket.getOutputStream());
             responseBuffer.setContentType("text/html");
-            responseBuffer.setResponseBody("<html><h1>Hello World</h1></html>".getBytes());
+            
+            byte[] buffer = new byte[1024];
+            int readCount;
+            try (InputStream stream = getClass().getResourceAsStream("/helloworld.html")) {
+                readCount = stream.read(buffer);
+            }
+            byte[] readBuffer = new byte[readCount];
+            System.arraycopy(buffer, 0, readBuffer, 0, readCount);
+            responseBuffer.setResponseBody(readBuffer);
             responseBuffer.send();
             socket.close();
         }
