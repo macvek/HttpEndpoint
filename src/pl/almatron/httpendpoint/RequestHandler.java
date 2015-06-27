@@ -37,20 +37,28 @@ public class RequestHandler {
             } else {
                 throw new RuntimeException("Pusty contentLength");
             }
-
         }
+        
+        if ("/image.png".equals(requestBuffer.getQuery())) {
+            responseBuffer.setContentType("image/png");
+            responseBuffer.setResponseBody(readFromStream("/image.png"));
+        }
+        else {
+            responseBuffer.setContentType("text/html");
+            responseBuffer.setResponseBody(readFromStream("/helloworld.html"));
+        }
+        responseBuffer.send();
+    }
 
-        responseBuffer.setContentType("text/html");
-
-        byte[] buffer = new byte[1024];
+    private byte[] readFromStream(String request) throws IOException {
+        byte[] buffer = new byte[1024*1024];
         int readCount;
-        try (InputStream stream = getClass().getResourceAsStream("/helloworld.html")) {
+        try (InputStream stream = getClass().getResourceAsStream(request)) {
             readCount = stream.read(buffer);
         }
         byte[] readBuffer = new byte[readCount];
         System.arraycopy(buffer, 0, readBuffer, 0, readCount);
-        responseBuffer.setResponseBody(readBuffer);
-        responseBuffer.send();
+        return readBuffer;
     }
 
     private String takeValueOf(String header, final String CONTENT_LENGTH) {

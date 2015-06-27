@@ -119,7 +119,7 @@ public class HttpRequestBuffer {
                 && methodPos < queryPos
                 && queryPos < endOfFirstLine - 2) {
             method = new String(buffer, 0, methodPos, usAscii);
-            query = new String(buffer, methodPos + 1, queryPos - methodPos, usAscii);
+            query = new String(buffer, methodPos + 1, queryPos - methodPos-1, usAscii);
             protocol = new String(buffer, queryPos + 1, endOfFirstLine - queryPos - 2, usAscii);
         } else {
             throw new RuntimeException("Malformed query");
