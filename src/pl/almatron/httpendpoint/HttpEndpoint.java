@@ -183,6 +183,7 @@ public class HttpEndpoint {
         private byte[] buffer;
         private int endOfFirstLine;
         private int headersTermination;
+        private int bodyTermination;
         private final static int rotateSize = 512;
         private final static int rotateTimesLimit = 3;
         private int rotateTimesCounter = rotateTimesLimit;
@@ -289,6 +290,27 @@ public class HttpEndpoint {
                     addHeaderPointer(nextLinePointer);
                 }
             }
+        }
+        
+        private void saveBody(int lengthRequired) {
+            bodyTermination = bodyStart() + lengthRequired;
+            while(bodyTermination > readPointer) {
+                readChunk();
+            }
+        }
+        
+        private byte[] readBody() {
+            byte[] body = new byte[bodyLength()];
+            System.arraycopy(buffer, bodyStart(), body, 0, bodyLength());
+            return body;
+        }
+
+        private int bodyLength() {
+            return bodyTermination-bodyStart();
+        }
+
+        private int bodyStart() {
+            return headersTermination;
         }
 
         private void addHeaderPointer(int nextLinePointer) {
@@ -415,8 +437,26 @@ public class HttpEndpoint {
             
             requestBuffer.saveHeaders();
             
+            String contentLength = null;
+            
             for (String header : requestBuffer.readHeaders()) {
+                final String CONTENT_LENGTH = "Content-Length: ";
+                String valueOf = takeValueOf(header, CONTENT_LENGTH);
+                if (valueOf != null) {
+                    contentLength = valueOf;
+                }
                 System.out.println(header);
+            }
+            
+            if ("POST".equals(requestBuffer.getMethod())) {
+                if (contentLength != null) {
+                    requestBuffer.saveBody(Integer.parseInt(contentLength));
+                    System.out.println(new String(requestBuffer.readBody()));
+                }
+                else {
+                    throw new RuntimeException("Pusty contentLength");
+                }
+                
             }
             
             HttpResponseBuffer responseBuffer = new HttpResponseBuffer(socket.getOutputStream());
@@ -432,6 +472,15 @@ public class HttpEndpoint {
             responseBuffer.setResponseBody(readBuffer);
             responseBuffer.send();
             socket.close();
+        }
+
+        private String takeValueOf(String header, final String CONTENT_LENGTH) {
+            if (header.startsWith(CONTENT_LENGTH)) {
+                return header.substring(CONTENT_LENGTH.length());
+            }
+            else {
+                return null;
+            }
         }
         
     }
