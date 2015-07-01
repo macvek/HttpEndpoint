@@ -1,6 +1,5 @@
 package pl.almatron.httpendpoint;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 
@@ -11,18 +10,10 @@ import java.nio.charset.Charset;
  */
 public class HttpRequestBuffer {
 
-    private final InputStream inputStream;
-    private byte[] buffer;
+    private RotateBuffer rotateBuffer;
     private int endOfFirstLine;
     private int headersTermination;
     private int bodyTermination;
-    private final static int rotateSize = 512;
-    private final static int rotateTimesLimit = 3;
-    private int rotateTimesCounter = rotateTimesLimit;
-    private boolean endOfStream;
-    private boolean allowedEndOfStream;
-
-    private int readPointer;
 
     private String method;
     private String query;
@@ -35,14 +26,14 @@ public class HttpRequestBuffer {
     private static final Charset usAscii = Charset.forName("US-ASCII");
 
     public HttpRequestBuffer(InputStream inputStream) {
-        this.inputStream = inputStream;
-        buffer = new byte[rotateSize];
         headerIndexes = new int[maxHeaders + 1];
+        rotateBuffer = new RotateBuffer();
+        rotateBuffer.setInputStream(inputStream);
     }
 
     public void readFirstLine() {
         do {
-            readChunk();
+            rotateBuffer.readChunk();
             markEndOfFirstLine();
         } while (endOfFirstLine == 0);
 
@@ -51,16 +42,17 @@ public class HttpRequestBuffer {
     }
     
     
-    public void saveBody(int lengthRequired) {
+    public void setupBodySize(int lengthRequired) {
         bodyTermination = bodyStart() + lengthRequired;
-        while (bodyTermination > readPointer) {
-            readChunk();
-        }
     }
 
     public byte[] readBody() {
+        while (bodyTermination > rotateBuffer.getSize()) {
+            rotateBuffer.readChunk();
+        }
+        
         byte[] body = new byte[bodyLength()];
-        System.arraycopy(buffer, bodyStart(), body, 0, bodyLength());
+        System.arraycopy(rotateBuffer.array(), bodyStart(), body, 0, bodyLength());
         return body;
     }
     
@@ -69,9 +61,9 @@ public class HttpRequestBuffer {
         headerPointer = 1;
         for (;;) {
             int lastIndex = headerIndexes[headerPointer - 1];
-            int nextLinePointer = readToNextLine(lastIndex);
+            int nextLinePointer = rotateBuffer.readToNextLine(lastIndex);
             if (nextLinePointer == -1) {
-                readChunk();
+                rotateBuffer.readChunk();
             } else {
                 if (isHeaderListFull()) {
                     throw new RuntimeException("Headers limit exceeded");
@@ -79,7 +71,7 @@ public class HttpRequestBuffer {
 
                 if (isEmptyHeaderLine(nextLinePointer)) {
                     headersTermination = nextLinePointer;
-                    allowedEndOfStream = true;
+                    rotateBuffer.setAllowedEndOfStream(true);
                     return;
                 }
 
@@ -91,7 +83,7 @@ public class HttpRequestBuffer {
     public String[] readHeaders() {
         String[] headers = new String[headerPointer - 1];
         for (int i = 1; i < headerPointer; i++) {
-            headers[i - 1] = new String(buffer,
+            headers[i - 1] = new String(rotateBuffer.array(),
                     headerIndexes[i - 1],
                     headerIndexes[i] - headerIndexes[i - 1] - 2,
                     usAscii);
@@ -104,7 +96,7 @@ public class HttpRequestBuffer {
     private void parseFirstLine() throws RuntimeException {
         int methodPos = 0;
         int queryPos = 0;
-
+        byte[] buffer = rotateBuffer.array();
         for (int i = 0; i < endOfFirstLine - 2; i++) {
             if (buffer[i] == ' ') {
                 if (methodPos == 0) {
@@ -129,24 +121,11 @@ public class HttpRequestBuffer {
     private void markEndOfFirstLine() {
         assert endOfFirstLine == 0;
 
-        int pointer = readToNextLine(0);
+        int pointer = rotateBuffer.readToNextLine(0);
         if (pointer != -1) {
             endOfFirstLine = pointer;
         }
     }
-
-    private int readToNextLine(int from) {
-        if (readPointer - from > 1) {
-            for (int i = from; i < readPointer - 1; i++) {
-                if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
-                    return i + 2;
-                }
-            }
-        }
-
-        return -1;
-    }
-
     
 
     private int bodyLength() {
@@ -168,40 +147,6 @@ public class HttpRequestBuffer {
 
     private boolean isEmptyHeaderLine(int nextLinePointer) {
         return nextLinePointer - headerIndexes[headerPointer - 1] == 2;
-    }
-
-    
-    private void readChunk() {
-        try {
-            int bytesRead = inputStream.read(buffer, readPointer, buffer.length - readPointer);
-            if (bytesRead == -1) {
-                endOfStream = true;
-            } else {
-                readPointer += bytesRead;
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        if (endOfStream && !allowedEndOfStream) {
-            throw new RuntimeException("Unexpected end of stream");
-        }
-
-        if (readPointer == buffer.length) {
-            rotateBuffer();
-        }
-    }
-
-    private void rotateBuffer() {
-        if (rotateTimesCounter == 0) {
-            throw new RuntimeException("RotateBuffer times exceeded");
-        }
-
-        rotateTimesCounter -= 1;
-
-        byte[] newBuffer = new byte[buffer.length + buffer.length];
-        System.arraycopy(buffer, 0, newBuffer, 0, buffer.length);
-        buffer = newBuffer;
     }
 
     public String getMethod() {
