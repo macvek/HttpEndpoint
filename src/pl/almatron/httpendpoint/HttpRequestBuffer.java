@@ -1,10 +1,13 @@
 package pl.almatron.httpendpoint;
 
 import java.io.BufferedInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * HttpEndpoint
@@ -13,20 +16,20 @@ import java.util.Scanner;
  */
 public class HttpRequestBuffer {
 
-    private RotateBuffer rotateBuffer;
-    private int headersTermination;
-    private int bodyTermination;
+    private int bodyLength;
 
     private String method;
     private String query;
     private String protocol;
 
-
+    private final BufferedInputStream bufferedInputStream;
+    
     private final Scanner scanner;
     private static final String END_OF_LINE = "\r\n";
     
     public HttpRequestBuffer(InputStream inputStream) {
-        scanner = new Scanner(new BufferedInputStream(inputStream));
+        bufferedInputStream = new BufferedInputStream(inputStream);
+        scanner = new Scanner(bufferedInputStream);
         scanner.useDelimiter(END_OF_LINE);
     }
 
@@ -44,17 +47,17 @@ public class HttpRequestBuffer {
     }
     
     
-    public void setupBodySize(int lengthRequired) {
-        bodyTermination = bodyStart() + lengthRequired;
+    public void setupBodySize(int bodyLength) {
+        this.bodyLength = bodyLength;
     }
 
     public byte[] readBody() {
-        while (bodyTermination > rotateBuffer.getSize()) {
-            rotateBuffer.readChunk();
+        byte[] body = new byte[bodyLength];
+        try {
+            bufferedInputStream.read(body, 0, body.length);
+        } catch (IOException ex) {
+            throw new RuntimeException("Error while readBody", ex);
         }
-        
-        byte[] body = new byte[bodyLength()];
-        System.arraycopy(rotateBuffer.array(), bodyStart(), body, 0, bodyLength());
         return body;
     }
    
@@ -77,14 +80,6 @@ public class HttpRequestBuffer {
         }
         
         return headers;
-    }
-
-    private int bodyLength() {
-        return bodyTermination - bodyStart();
-    }
-
-    private int bodyStart() {
-        return headersTermination;
     }
 
     public String getMethod() {
