@@ -32,7 +32,7 @@ public class RequestHandler {
 
         if ("POST".equals(requestBuffer.getMethod())) {
             if (contentLength != null) {
-                requestBuffer.saveBody(Integer.parseInt(contentLength));
+                requestBuffer.setupBodySize(Integer.parseInt(contentLength));
                 System.out.println(new String(requestBuffer.readBody()));
             } else {
                 throw new RuntimeException("Pusty contentLength");
