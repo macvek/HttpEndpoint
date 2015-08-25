@@ -17,8 +17,6 @@ public class RequestHandler {
         System.out.println("Query:" + requestBuffer.getQuery());
         System.out.println("Protocol:" + requestBuffer.getProtocol());
 
-        requestBuffer.saveHeaders();
-
         String contentLength = null;
 
         for (String header : requestBuffer.readHeaders()) {
