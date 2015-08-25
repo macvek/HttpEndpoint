@@ -1,13 +1,13 @@
 package pl.almatron.httpendpoint;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * HttpEndpoint
@@ -15,26 +15,28 @@ import java.util.logging.Logger;
  * @author macvek
  */
 public class HttpRequestBuffer {
-
+    private static final String END_OF_LINE = "\r\n";
+    private static final byte[] END_OF_HEADERS_PATTERN = new byte[] {'\r','\n','\r','\n'};
     private int bodyLength;
 
     private String method;
     private String query;
     private String protocol;
-
+   
+    private Scanner invocationScanner;
     private final BufferedInputStream bufferedInputStream;
     
-    private final Scanner scanner;
-    private static final String END_OF_LINE = "\r\n";
+    private ByteBuffer headersReadBuffer;
     
     public HttpRequestBuffer(InputStream inputStream) {
         bufferedInputStream = new BufferedInputStream(inputStream);
-        scanner = new Scanner(bufferedInputStream);
-        scanner.useDelimiter(END_OF_LINE);
+        
     }
 
     public void readFirstLine() {
-        final String firstLine = scanner.next();
+        bufferUntilHeadersEnd();
+        initializeInvocationScanner();
+        final String firstLine = invocationScanner.next();
         String[] parts = firstLine.split(" ",3);
         if (parts.length == 3) {
             method = parts[0];
@@ -64,8 +66,9 @@ public class HttpRequestBuffer {
     public List<String> readHeaders() {
         ArrayList<String> headers = new ArrayList<>();
         boolean foundLast = false;
-        while(scanner.hasNext()) {
-            String line = scanner.next();
+        while(invocationScanner.hasNext()) {
+            String line = invocationScanner.next();
+
             if (line.isEmpty()) {
                 foundLast = true;
                 break;
@@ -81,7 +84,48 @@ public class HttpRequestBuffer {
         
         return headers;
     }
+    
+    private void bufferUntilHeadersEnd() {
+        final CompareByteArrays compareByteArrays= new CompareByteArrays(END_OF_HEADERS_PATTERN);
+        byte[] expectedBytes = new byte[END_OF_HEADERS_PATTERN.length];
+        initializeHeadersReadBuffer();
+        int expectedToRead = expectedBytes.length;
+        for (;;) {
+            try {
+                if ( bufferedInputStream.read(expectedBytes, expectedBytes.length - expectedToRead, expectedToRead) !=  expectedToRead) {
+                    throw new RuntimeException("Unexpected end of stream");
+                }
+                putIntoHeadersReadBuffer(expectedBytes);
+                
+            }catch(IOException e) {
+                throw new RuntimeException("Error while end of headers scan", e);
+            }
+            
+            expectedToRead = compareByteArrays.findOffset(expectedBytes);
+            if (expectedToRead < expectedBytes.length) {
+                if (expectedToRead == 0) {
+                    break;
+                }
+                else {
+                    System.arraycopy(expectedBytes, expectedToRead, expectedBytes, 0, expectedBytes.length - expectedToRead);
+                }
+            }
+        } 
+    }
 
+    private void putIntoHeadersReadBuffer(byte[] expectedEndLine) {
+        headersReadBuffer.put(expectedEndLine);
+    }
+
+    private void initializeHeadersReadBuffer() {
+        headersReadBuffer = ByteBuffer.allocate(1024);
+    }
+    
+    private void initializeInvocationScanner() {
+        invocationScanner = new Scanner(new ByteArrayInputStream(headersReadBuffer.array(), 0, headersReadBuffer.position()));
+        invocationScanner.useDelimiter(END_OF_LINE);
+    }
+    
     public String getMethod() {
         return method;
     }
@@ -93,5 +137,7 @@ public class HttpRequestBuffer {
     public String getProtocol() {
         return protocol;
     }
+    
+    
 
 }
