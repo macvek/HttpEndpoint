@@ -17,6 +17,8 @@ import java.util.Scanner;
 public class HttpRequestBuffer {
     private static final String END_OF_LINE = "\r\n";
     private static final byte[] END_OF_HEADERS_PATTERN = new byte[] {'\r','\n','\r','\n'};
+    private static final int HEADERS_SIZE_CAPACITY = 4096;
+    private static final int HEADERS_SIZE_INITIALSIZE = 256;
     private int bodyLength;
 
     private String method;
@@ -113,12 +115,33 @@ public class HttpRequestBuffer {
         } 
     }
 
-    private void putIntoHeadersReadBuffer(byte[] expectedEndLine) {
-        headersReadBuffer.put(expectedEndLine);
+    private void putIntoHeadersReadBuffer(byte[] invocationContent) {
+        if (headersReadBuffer.position()+invocationContent.length > headersReadBuffer.capacity()) {
+            rotateHeadersReadBuffer();
+        }
+        headersReadBuffer.put(invocationContent);
     }
 
+    private void rotateHeadersReadBuffer() {
+        int newLength = headersReadBuffer.capacity() + headersReadBuffer.capacity();
+        if (newLength > HEADERS_SIZE_CAPACITY) {
+            throw new RuntimeException("Headers size limit exceeded");
+        }
+        else {
+            headersReadBuffer.limit(headersReadBuffer.position());
+            headersReadBuffer.position(0);
+            
+            ByteBuffer newByteBuffer = ByteBuffer.allocate(newLength);
+            newByteBuffer.put(headersReadBuffer);
+            headersReadBuffer = newByteBuffer;
+        }
+        
+    }
+    
+    
+    
     private void initializeHeadersReadBuffer() {
-        headersReadBuffer = ByteBuffer.allocate(1024);
+        headersReadBuffer = ByteBuffer.allocate(HEADERS_SIZE_INITIALSIZE);
     }
     
     private void initializeInvocationScanner() {
@@ -137,7 +160,7 @@ public class HttpRequestBuffer {
     public String getProtocol() {
         return protocol;
     }
-    
-    
+
+
 
 }
