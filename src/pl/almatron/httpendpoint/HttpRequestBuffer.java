@@ -1,10 +1,8 @@
 package pl.almatron.httpendpoint;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -16,9 +14,7 @@ import java.util.Scanner;
  */
 public class HttpRequestBuffer {
     private static final String END_OF_LINE = "\r\n";
-    private static final byte[] END_OF_HEADERS_PATTERN = new byte[] {'\r','\n','\r','\n'};
-    private static final int HEADERS_SIZE_CAPACITY = 4096;
-    private static final int HEADERS_SIZE_INITIALSIZE = 256;
+
     private int bodyLength;
 
     private String method;
@@ -28,7 +24,7 @@ public class HttpRequestBuffer {
     private Scanner invocationScanner;
     private final BufferedInputStream bufferedInputStream;
     
-    private ByteBuffer headersReadBuffer;
+    private InputStream headersInputStream;
     
     public HttpRequestBuffer(InputStream inputStream) {
         bufferedInputStream = new BufferedInputStream(inputStream);
@@ -36,7 +32,7 @@ public class HttpRequestBuffer {
     }
 
     public void readFirstLine() {
-        bufferUntilHeadersEnd();
+        headersInputStream = new CutHeadersFromInputStream(bufferedInputStream).asInputStream();
         initializeInvocationScanner();
         final String firstLine = invocationScanner.next();
         String[] parts = firstLine.split(" ",3);
@@ -86,66 +82,9 @@ public class HttpRequestBuffer {
         
         return headers;
     }
-    
-    private void bufferUntilHeadersEnd() {
-        final CompareByteArrays compareByteArrays= new CompareByteArrays(END_OF_HEADERS_PATTERN);
-        byte[] expectedBytes = new byte[END_OF_HEADERS_PATTERN.length];
-        initializeHeadersReadBuffer();
-        int expectedToRead = expectedBytes.length;
-        for (;;) {
-            try {
-                if ( bufferedInputStream.read(expectedBytes, expectedBytes.length - expectedToRead, expectedToRead) !=  expectedToRead) {
-                    throw new RuntimeException("Unexpected end of stream");
-                }
-                putIntoHeadersReadBuffer(expectedBytes);
-                
-            }catch(IOException e) {
-                throw new RuntimeException("Error while end of headers scan", e);
-            }
-            
-            expectedToRead = compareByteArrays.findOffset(expectedBytes);
-            if (expectedToRead < expectedBytes.length) {
-                if (expectedToRead == 0) {
-                    break;
-                }
-                else {
-                    System.arraycopy(expectedBytes, expectedToRead, expectedBytes, 0, expectedBytes.length - expectedToRead);
-                }
-            }
-        } 
-    }
 
-    private void putIntoHeadersReadBuffer(byte[] invocationContent) {
-        if (headersReadBuffer.position()+invocationContent.length > headersReadBuffer.capacity()) {
-            rotateHeadersReadBuffer();
-        }
-        headersReadBuffer.put(invocationContent);
-    }
-
-    private void rotateHeadersReadBuffer() {
-        int newLength = headersReadBuffer.capacity() + headersReadBuffer.capacity();
-        if (newLength > HEADERS_SIZE_CAPACITY) {
-            throw new RuntimeException("Headers size limit exceeded");
-        }
-        else {
-            headersReadBuffer.limit(headersReadBuffer.position());
-            headersReadBuffer.position(0);
-            
-            ByteBuffer newByteBuffer = ByteBuffer.allocate(newLength);
-            newByteBuffer.put(headersReadBuffer);
-            headersReadBuffer = newByteBuffer;
-        }
-        
-    }
-    
-    
-    
-    private void initializeHeadersReadBuffer() {
-        headersReadBuffer = ByteBuffer.allocate(HEADERS_SIZE_INITIALSIZE);
-    }
-    
     private void initializeInvocationScanner() {
-        invocationScanner = new Scanner(new ByteArrayInputStream(headersReadBuffer.array(), 0, headersReadBuffer.position()));
+        invocationScanner = new Scanner(headersInputStream);
         invocationScanner.useDelimiter(END_OF_LINE);
     }
     
@@ -160,7 +99,5 @@ public class HttpRequestBuffer {
     public String getProtocol() {
         return protocol;
     }
-
-
 
 }

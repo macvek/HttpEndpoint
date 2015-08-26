@@ -7,6 +7,7 @@ package pl.almatron.httpendpoint;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.List;
 import org.junit.Test;
 import static org.junit.Assert.*;
