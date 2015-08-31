@@ -8,18 +8,26 @@ import java.io.InputStream;
  */
 public class MultipartFormDataReader {
     
-    public interface FieldHandler {
-        void onHeaders(String[] headers);
-        void onData(byte[] buffer, boolean pending);
+    private final String boundary;
+    private OnFieldHandler onFieldHandler;
+    
+    public static interface OnFieldHandler {
+        public void onField(String fieldName, InputStream value);
+    }
+
+    public MultipartFormDataReader(String boundary) {
+        this.boundary = boundary;
     }
     
-    private byte[] boundary;
-    private byte[] buffer;
-    private FieldHandler fieldHandler;
-    
-    public MultipartFormDataReader() {
+    public MultipartFormDataReader readFromStream(InputStream stream) {
         
+        
+        return this;
     }
     
+    public MultipartFormDataReader withOnFieldHandler(OnFieldHandler handler) {
+        onFieldHandler = handler;
+        return this;
+    }
     
 }

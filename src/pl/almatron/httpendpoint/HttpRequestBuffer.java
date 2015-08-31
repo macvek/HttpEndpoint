@@ -47,14 +47,14 @@ public class HttpRequestBuffer {
     }
     
     
-    public void setupBodySize(int bodyLength) {
+    public void setupBodyLength(int bodyLength) {
         this.bodyLength = bodyLength;
     }
 
     public byte[] readBody() {
         byte[] body = new byte[bodyLength];
         try {
-            bufferedInputStream.read(body, 0, body.length);
+            bufferedInputStream.read(body, 0, bodyLength);
         } catch (IOException ex) {
             throw new RuntimeException("Error while readBody", ex);
         }

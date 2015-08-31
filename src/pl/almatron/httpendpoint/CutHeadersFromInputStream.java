@@ -30,6 +30,10 @@ public class CutHeadersFromInputStream {
         return new ByteArrayInputStream(headersReadBuffer.array(), 0, headersReadBuffer.position());
     }
     
+    public int getHeadersSize() {
+        return headersReadBuffer.position();
+    }
+    
     private void initializeHeadersReadBuffer() {
         headersReadBuffer = ByteBuffer.allocate(HEADERS_SIZE_INITIALSIZE);
     }

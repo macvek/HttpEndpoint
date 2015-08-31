@@ -9,7 +9,10 @@ import java.io.InputStream;
  * @author macvek
  */
 public class RequestHandler {
-
+    private final static String CONTENT_LENGTH = "Content-Length";
+    private final static String CONTENT_TYPE = "Content-Type";
+    private final static String BOUNDARY = "boundary=";
+    
     void handleRequest(HttpRequestBuffer requestBuffer, HttpResponseBuffer responseBuffer) throws IOException {
 
         requestBuffer.readFirstLine();
@@ -18,19 +21,34 @@ public class RequestHandler {
         System.out.println("Protocol:" + requestBuffer.getProtocol());
 
         String contentLength = null;
-
+        String contentType = null;
+        String boundary = null;
+        
         for (String header : requestBuffer.readHeaders()) {
-            final String CONTENT_LENGTH = "Content-Length: ";
-            String valueOf = takeValueOf(header, CONTENT_LENGTH);
-            if (valueOf != null) {
-                contentLength = valueOf;
+            
+            String[] keyAndValue = splitHeader(header);
+            if (CONTENT_LENGTH.equals(keyAndValue[0])) {
+                contentLength = keyAndValue[1];
             }
+            else if (CONTENT_TYPE.equals(keyAndValue[0])) {
+                contentType = parseContentType(keyAndValue[1]);
+                if ("multipart/form-data".equals(contentType)) {
+                    boundary = parseBoundary(keyAndValue[1]);
+                }
+            }
+            
+            
             System.out.println(header);
         }
 
         if ("POST".equals(requestBuffer.getMethod())) {
+            if (false && boundary != null) {
+                MultipartFormDataReader multipartFormDataReader = new MultipartFormDataReader(boundary);
+                
+            }
+            else
             if (contentLength != null) {
-                requestBuffer.setupBodySize(Integer.parseInt(contentLength));
+                requestBuffer.setupBodyLength(Integer.parseInt(contentLength));
                 System.out.println(new String(requestBuffer.readBody()));
             } else {
                 throw new RuntimeException("Pusty contentLength");
@@ -46,6 +64,7 @@ public class RequestHandler {
             responseBuffer.setResponseBody(readFromStream("/helloworld.html"));
         }
         responseBuffer.send();
+        System.out.println("END OF RESPONSE!");
     }
 
     private byte[] readFromStream(String request) throws IOException {
@@ -59,11 +78,32 @@ public class RequestHandler {
         return readBuffer;
     }
 
-    private String takeValueOf(String header, final String CONTENT_LENGTH) {
-        if (header.startsWith(CONTENT_LENGTH)) {
-            return header.substring(CONTENT_LENGTH.length());
-        } else {
-            return null;
+    private String[] splitHeader(String header) {
+        String[] keyAndValue = header.split(":");
+        if (keyAndValue.length >= 2) {
+            return new String[] {keyAndValue[0].trim(), keyAndValue[1].trim()};
         }
+        else {
+            throw new IllegalArgumentException("Header line doesn't contain semicolor: "+header);
+        }
+    }
+    
+    private String parseContentType(String contentType) {
+        int indexOf = contentType.indexOf(";");
+        if (indexOf == -1) {
+            return contentType;
+        }
+        else {
+            return contentType.substring(0, indexOf);
+        }
+    }
+    
+    private String parseBoundary(String contentType) {
+        int indexOf = contentType.indexOf(BOUNDARY);
+        if (indexOf == -1) {
+            throw new IllegalArgumentException("boundary not found in "+contentType);
+        }
+        
+        return contentType.substring(indexOf+BOUNDARY.length());
     }
 }
