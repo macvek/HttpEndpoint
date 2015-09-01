@@ -63,21 +63,8 @@ public class HttpRequestBuffer {
    
     public List<String> readHeaders() {
         ArrayList<String> headers = new ArrayList<>();
-        boolean foundLast = false;
         while(invocationScanner.hasNext()) {
-            String line = invocationScanner.next();
-
-            if (line.isEmpty()) {
-                foundLast = true;
-                break;
-            }
-            else {
-                headers.add(line);
-            }
-        }
-        
-        if (!foundLast) {
-            throw new RuntimeException("Header parsing error, no trailing endline");
+            headers.add(invocationScanner.next());
         }
         
         return headers;

@@ -19,7 +19,7 @@ public class CompareByteArrays {
      * If it is only partially matching, like:
      * PATTERN:  A A A A
      * EXPECTED: 0 1 A A 
-     * then it return 1 as it is first index of matching pattern in given array
+     * then it return 2 as it is first index of matching pattern in given array
      * @param expectedBytes
      * @return 
      */

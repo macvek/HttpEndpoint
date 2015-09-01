@@ -20,8 +20,11 @@ public class CutHeadersFromInputStreamTest {
     @Test
     public void testShouldReadInputBufferToEndOfHeaders() throws IOException {
         String textInput = "GET /query HTTP/1.1\r\n";
-        textInput+="Header: headerValue\r\n\r\n";
-        InputStream input = new ByteArrayInputStream(textInput.getBytes());
+        textInput+="Header: headerValue\r\n";
+        
+        String headersValue = textInput+"\r\n";
+        
+        InputStream input = new ByteArrayInputStream(headersValue.getBytes());
         
         InputStream headers = new CutHeadersFromInputStream(input).asInputStream();
         byte[] buffer = new byte[128];

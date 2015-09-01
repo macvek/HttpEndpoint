@@ -27,11 +27,7 @@ public class CutHeadersFromInputStream {
     public InputStream asInputStream() {
         initializeHeadersReadBuffer();
         bufferUntilHeadersEnd();
-        return new ByteArrayInputStream(headersReadBuffer.array(), 0, headersReadBuffer.position());
-    }
-    
-    public int getHeadersSize() {
-        return headersReadBuffer.position();
+        return new ByteArrayInputStream(headersReadBuffer.array(), 0, headersReadBuffer.position() -2); // -2 == '\r\n'.length
     }
     
     private void initializeHeadersReadBuffer() {
