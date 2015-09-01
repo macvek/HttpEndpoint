@@ -1,5 +1,6 @@
 package pl.almatron.httpendpoint;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -11,8 +12,11 @@ import java.util.Scanner;
  * @author macvek
  */
 public class MultipartFormDataReader {
-    
+    private final int bufferSize;
     private final byte[] boundaryBytes;
+    private final byte[] boundaryReadBuffer;
+    private final byte[] secondaryBuffer;
+    private int secondaryBufferPointer;
     private OnFieldHandler onFieldHandler;
     private InputStream inputStream;
     private static final CompareByteArrays ENDLINE = new CompareByteArrays(new byte[] {'\r','\n' });
@@ -26,13 +30,16 @@ public class MultipartFormDataReader {
 
     public MultipartFormDataReader(String boundary) {
         this.boundaryBytes = ("--"+boundary).getBytes();
+        bufferSize  = boundaryBytes.length;
+        boundaryReadBuffer = new byte[bufferSize];
+        secondaryBuffer = new byte[bufferSize];
         boundaryComparator = new CompareByteArrays(boundaryBytes);
     }
     
     public MultipartFormDataReader readFromStream(InputStream stream) throws IOException {
         inputStream = stream;
+        readUntilBoundary();
         for (;;) {
-            readUntilBoundary();
             if (false == isEndOfStream()) {
                 final InputStream headersInputStream = new CutHeadersFromInputStream(stream).asInputStream();
                 final Scanner scanner = new Scanner(headersInputStream);
@@ -54,7 +61,7 @@ public class MultipartFormDataReader {
     }
     
     private InputStream toNextBoundaryInputStream() {
-        return inputStream;
+        return new UpToBoundaryInputStream();
     }
     
     public MultipartFormDataReader withOnFieldHandler(OnFieldHandler handler) {
@@ -63,22 +70,55 @@ public class MultipartFormDataReader {
     }
     
     private void readUntilBoundary() throws IOException {
-        byte[] buffer = new byte[boundaryBytes.length];
-        int bytesRead = inputStream.read(buffer);
-        if (bytesRead == buffer.length) {
-            int offset = boundaryComparator.findOffset(buffer);
-            while (offset > 0) {
-                System.arraycopy(buffer, offset, buffer, 0, buffer.length - offset);
-                if (offset == inputStream.read(buffer,buffer.length - offset, offset)) {
-                    offset = boundaryComparator.findOffset(buffer);
-                }
-                else {
-                    throw new RuntimeException("Boundary not found in stream");
-                }
+        for(;;) {
+            if (fillBoundaryReadBuffer() < bufferSize) {
+                break;
+            }
+        }
+    }
+    
+    private int fillBoundaryReadBuffer() throws IOException {
+        int expectedLength = rotateBuffers();
+        if (expectedLength == inputStream.read(boundaryReadBuffer, secondaryBufferPointer, expectedLength)) {
+            int offset = boundaryComparator.findOffset(boundaryReadBuffer);
+            if (offset > 0 && offset < boundaryBytes.length) {
+                return fillSecondaryBuffer(offset);
+            }
+            else {
+                return offset;
             }
         }
         else {
             throw new RuntimeException("Not enough bytes read, aborting");
+        }
+    }
+
+    private int rotateBuffers() {
+        if (secondaryBufferPointer > 0) {
+            System.arraycopy(secondaryBuffer, secondaryBufferPointer, boundaryReadBuffer, 0, bufferSize - secondaryBufferPointer);
+            return bufferSize - secondaryBufferPointer;
+        }
+        else {
+            return bufferSize;
+        }
+    }
+
+    private int fillSecondaryBuffer(int offset) throws RuntimeException, IOException {
+        int suspectedBoundary = boundaryReadBuffer.length - offset;
+        System.arraycopy(boundaryReadBuffer, offset, secondaryBuffer, 0, suspectedBoundary);
+        if (offset == inputStream.read(secondaryBuffer,suspectedBoundary, offset)) {
+            int secondaryOffset = boundaryComparator.findOffset(secondaryBuffer);
+            if (0 == secondaryOffset) {
+                secondaryBufferPointer = 0;
+                return offset;
+            }
+            else {
+                secondaryBufferPointer = offset;                
+                return bufferSize;
+            }
+        }
+        else {
+            throw new RuntimeException("Boundary not found in stream");
         }
     }
     
@@ -98,6 +138,36 @@ public class MultipartFormDataReader {
         else {
             throw new RuntimeException("Expected two bytes, but got less");
         }
+    }
+    
+    public class UpToBoundaryInputStream extends FilterInputStream {
+
+        public UpToBoundaryInputStream() {
+            super(null);
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            int newOffset = offset;
+
+            for(;;) {
+                int bytesRead = fillBoundaryReadBuffer();
+                System.arraycopy(boundaryReadBuffer, 0, bytes, newOffset, bytesRead);
+                newOffset += bytesRead; 
+                
+                if (bytesRead < bufferSize) {
+                    break;
+                }
+            }
+            return newOffset - offset;
+        }
+
+        @Override
+        public int read() throws IOException {
+            throw new UnsupportedOperationException("UpToBoundaryInputStream supports only reading to given buffer");
+        }
+        
+        
     }
     
 }

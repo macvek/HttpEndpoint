@@ -44,6 +44,8 @@ public class MultipartFormDataReaderTest {
             if (headers.contains("Content-Disposition: form-data; name=\"fieldname\"")) {
                 flag = true;
             }
+            byte[] bytes = new byte[128];
+            value.read(bytes);
             
         };
         
