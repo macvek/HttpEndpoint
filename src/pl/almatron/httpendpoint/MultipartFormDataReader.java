@@ -79,12 +79,13 @@ public class MultipartFormDataReader {
     
     private int fillBoundaryReadBuffer() throws IOException {
         int expectedLength = rotateBuffers();
-        if (expectedLength == inputStream.read(boundaryReadBuffer, secondaryBufferPointer, expectedLength)) {
+        if (expectedLength == inputStream.read(boundaryReadBuffer, bufferSize - expectedLength, expectedLength)) {
             int offset = boundaryComparator.findOffset(boundaryReadBuffer);
             if (offset > 0 && offset < boundaryBytes.length) {
                 return fillSecondaryBuffer(offset);
             }
             else {
+                secondaryBufferPointer = 0;
                 return offset;
             }
         }
@@ -94,9 +95,9 @@ public class MultipartFormDataReader {
     }
 
     private int rotateBuffers() {
-        if (secondaryBufferPointer > 0) {
-            System.arraycopy(secondaryBuffer, secondaryBufferPointer, boundaryReadBuffer, 0, bufferSize - secondaryBufferPointer);
-            return bufferSize - secondaryBufferPointer;
+        if (secondaryBufferPointer != 0) {
+            System.arraycopy(secondaryBuffer, bufferSize-secondaryBufferPointer, boundaryReadBuffer, 0, secondaryBufferPointer);
+            return bufferSize-secondaryBufferPointer;
         }
         else {
             return bufferSize;
@@ -107,8 +108,7 @@ public class MultipartFormDataReader {
         int suspectedBoundary = boundaryReadBuffer.length - offset;
         System.arraycopy(boundaryReadBuffer, offset, secondaryBuffer, 0, suspectedBoundary);
         if (offset == inputStream.read(secondaryBuffer,suspectedBoundary, offset)) {
-            int secondaryOffset = boundaryComparator.findOffset(secondaryBuffer);
-            if (0 == secondaryOffset) {
+            if (0 == boundaryComparator.findOffset(secondaryBuffer)) {
                 secondaryBufferPointer = 0;
                 return offset;
             }

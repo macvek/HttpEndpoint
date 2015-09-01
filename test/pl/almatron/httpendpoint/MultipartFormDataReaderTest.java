@@ -68,13 +68,55 @@ public class MultipartFormDataReaderTest {
             byte[] bytes = new byte[128];
             int size = value.read(bytes);
 
-            flag = "Submit MULTIPART FORM DATA\r\n".equals(new String(bytes,0,size));
+            assertEquals("Submit MULTIPART FORM DATA\r\n", new String(bytes,0,size));
             
         };
         
         reader.withOnFieldHandler(onFieldHandler).readFromStream(stream);
-        
-        assertTrue(flag);
     }
+    
+    @Test
+    public void shouldLoadContentFirstOnlyPartialBoundary() throws IOException {
+        InputStream stream = new ByteArrayInputStream(
+                        ("--X\r\n" +
+                        "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
+                        "\r\n" +
+                        "--A--\r\n" + 
+                        "--X--\r\n").getBytes());
+        
+        
+        final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
+            byte[] bytes = new byte[128];
+            int size = value.read(bytes);
+
+            assertEquals("--A--\r\n", new String(bytes,0,size));
+            
+        };
+        
+        reader.withOnFieldHandler(onFieldHandler).readFromStream(stream);
+    }
+    
+    @Test
+    public void shouldLoadContentFirstOnlyPartialBoundaryWithLimit() throws IOException {
+        InputStream stream = new ByteArrayInputStream(
+                        ("--X\r\n" +
+                        "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
+                        "\r\n" +
+                        "-----A\r\n" + 
+                        "--X--\r\n").getBytes());
+        
+        
+        final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
+            byte[] bytes = new byte[128];
+            int size = 0;
+            while(0 != value.read(bytes,size, 1)) size++;
+
+            assertEquals("-----A\r\n", new String(bytes,0,size));
+            
+        };
+        
+        reader.withOnFieldHandler(onFieldHandler).readFromStream(stream);
+    }
+    
     
 }
