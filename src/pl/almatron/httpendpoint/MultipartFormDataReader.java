@@ -32,6 +32,7 @@ public class MultipartFormDataReader {
         this.boundaryBytes = ("--"+boundary).getBytes();
         bufferSize  = boundaryBytes.length;
         boundaryReadBuffer = new byte[bufferSize];
+        secondaryBufferPointer = bufferSize;
         secondaryBuffer = new byte[bufferSize];
         boundaryComparator = new CompareByteArrays(boundaryBytes);
     }
@@ -71,21 +72,28 @@ public class MultipartFormDataReader {
     
     private void readUntilBoundary() throws IOException {
         for(;;) {
-            if (fillBoundaryReadBuffer() < bufferSize) {
+            if (fillBoundaryReadBuffer(bufferSize) < bufferSize) {
                 break;
             }
         }
     }
     
-    private int fillBoundaryReadBuffer() throws IOException {
-        int expectedLength = rotateBuffers();
-        if (expectedLength == inputStream.read(boundaryReadBuffer, bufferSize - expectedLength, expectedLength)) {
+    private int fillBoundaryReadBuffer(int limit) throws IOException {
+        int rotatedBytes = rotateBuffers();
+        int bytesToRead = bufferSize - rotatedBytes;
+        boolean readingNotRequired = false;
+        
+        if (readingNotRequired || bytesToRead == inputStream.read(boundaryReadBuffer, rotatedBytes, bytesToRead)) {
             int offset = boundaryComparator.findOffset(boundaryReadBuffer);
+            if (offset >= limit) {
+                cutToSecondaryBuffer(limit, rotatedBytes);
+                return limit;
+            }
+            else
             if (offset > 0 && offset < boundaryBytes.length) {
                 return fillSecondaryBuffer(offset);
             }
             else {
-                secondaryBufferPointer = 0;
                 return offset;
             }
         }
@@ -95,21 +103,19 @@ public class MultipartFormDataReader {
     }
 
     private int rotateBuffers() {
-        if (secondaryBufferPointer != 0) {
-            System.arraycopy(secondaryBuffer, bufferSize-secondaryBufferPointer, boundaryReadBuffer, 0, secondaryBufferPointer);
-            return bufferSize-secondaryBufferPointer;
+        int rotatedBytes = bufferSize-secondaryBufferPointer;
+        if (rotatedBytes > 0) {
+            System.arraycopy(secondaryBuffer, secondaryBufferPointer, boundaryReadBuffer, 0, rotatedBytes);
         }
-        else {
-            return bufferSize;
-        }
+        return rotatedBytes;
     }
 
     private int fillSecondaryBuffer(int offset) throws RuntimeException, IOException {
-        int suspectedBoundary = boundaryReadBuffer.length - offset;
-        System.arraycopy(boundaryReadBuffer, offset, secondaryBuffer, 0, suspectedBoundary);
-        if (offset == inputStream.read(secondaryBuffer,suspectedBoundary, offset)) {
+        int partialBoundaryLength = bufferSize - offset;
+        System.arraycopy(boundaryReadBuffer, offset, secondaryBuffer, 0, partialBoundaryLength);
+        if (offset == inputStream.read(secondaryBuffer,partialBoundaryLength, offset)) {
             if (0 == boundaryComparator.findOffset(secondaryBuffer)) {
-                secondaryBufferPointer = 0;
+                secondaryBufferPointer = bufferSize;
                 return offset;
             }
             else {
@@ -120,6 +126,12 @@ public class MultipartFormDataReader {
         else {
             throw new RuntimeException("Boundary not found in stream");
         }
+    }
+    
+    private void cutToSecondaryBuffer(int from, int to) {
+        int length = to - from;
+        secondaryBufferPointer = bufferSize - length;
+        System.arraycopy(boundaryReadBuffer, from, secondaryBuffer, secondaryBufferPointer,  length);
     }
     
     private boolean isEndOfStream() throws IOException {
@@ -149,9 +161,9 @@ public class MultipartFormDataReader {
         @Override
         public int read(byte[] bytes, int offset, int length) throws IOException {
             int newOffset = offset;
-
+            int maxOffset = length - offset;
             for(;;) {
-                int bytesRead = fillBoundaryReadBuffer();
+                int bytesRead = fillBoundaryReadBuffer(length);
                 System.arraycopy(boundaryReadBuffer, 0, bytes, newOffset, bytesRead);
                 newOffset += bytesRead; 
                 
