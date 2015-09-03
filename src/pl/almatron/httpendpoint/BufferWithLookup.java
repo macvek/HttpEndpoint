@@ -27,8 +27,7 @@ public class BufferWithLookup {
             lookupBuffer = null;
         }
         
-        
-        return inputStream.read(outBuffer, ptr, outBuffer.length - ptr);
+        return inputStream.read(outBuffer, ptr, outBuffer.length - ptr) + ptr;
     }
 
 }

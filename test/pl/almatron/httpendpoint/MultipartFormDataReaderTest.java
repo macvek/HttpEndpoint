@@ -9,7 +9,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.Scanner;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import org.junit.Before;
@@ -25,7 +24,7 @@ public class MultipartFormDataReaderTest {
     @Before
     public void setup() {
         flag = false;
-        reader = new MultipartFormDataReader("X");
+        reader = new MultipartFormDataReader("XXXXXXXX");
     }
 
     private boolean flag;
@@ -33,11 +32,11 @@ public class MultipartFormDataReaderTest {
     @Test
     public void shouldLoadHeaders() throws IOException {
         InputStream stream = new ByteArrayInputStream(
-                        ("--X\r\n" +
+                        ("--XXXXXXXX\r\n" +
                         "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
                         "\r\n" +
                         "Submit MULTIPART FORM DATA\r\n" + 
-                        "--X--\r\n").getBytes());
+                        "--XXXXXXXX--\r\n").getBytes());
         
         
         final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
@@ -57,11 +56,11 @@ public class MultipartFormDataReaderTest {
     @Test
     public void shouldLoadContent() throws IOException {
         InputStream stream = new ByteArrayInputStream(
-                        ("--X\r\n" +
+                        ("--XXXXXXXX\r\n" +
                         "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
                         "\r\n" +
                         "Submit MULTIPART FORM DATA\r\n" + 
-                        "--X--\r\n").getBytes());
+                        "--XXXXXXXX--\r\n").getBytes());
         
         
         final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
@@ -78,18 +77,18 @@ public class MultipartFormDataReaderTest {
     @Test
     public void shouldLoadContentFirstOnlyPartialBoundary() throws IOException {
         InputStream stream = new ByteArrayInputStream(
-                        ("--X\r\n" +
+                        ("--XXXXXXXX\r\n" +
                         "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
                         "\r\n" +
-                        "--A--\r\n" + 
-                        "--X--\r\n").getBytes());
+                        "--XXXXXXX--\r\n" + 
+                        "--XXXXXXXX--\r\n").getBytes());
         
         
         final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
             byte[] bytes = new byte[128];
             int size = value.read(bytes);
 
-            assertEquals("--A--\r\n", new String(bytes,0,size));
+            assertEquals("--XXXXXXX--\r\n", new String(bytes,0,size));
             
         };
         
@@ -99,11 +98,11 @@ public class MultipartFormDataReaderTest {
     @Test
     public void shouldLoadContentFirstOnlyPartialBoundaryWithLimit() throws IOException {
         InputStream stream = new ByteArrayInputStream(
-                        ("--X\r\n" +
+                        ("--XXXXXXXX\r\n" +
                         "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
                         "\r\n" +
-                        "-----A\r\n" + 
-                        "--X--\r\n").getBytes());
+                        "-----X\r\n" + 
+                        "--XXXXXXXX--\r\n").getBytes());
         
         
         final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
@@ -111,7 +110,7 @@ public class MultipartFormDataReaderTest {
             int size = 0;
             while(0 != value.read(bytes,size, 1)) size++;
 
-            assertEquals("-----A\r\n", new String(bytes,0,size));
+            assertEquals("-----X\r\n", new String(bytes,0,size));
             
         };
         

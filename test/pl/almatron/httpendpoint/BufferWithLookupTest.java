@@ -41,4 +41,11 @@ public class BufferWithLookupTest {
         assertArrayEquals(new byte[] {1,2,3,4}, bytes);
     }
     
+    @Test
+    public void shouldReadCount() throws IOException {
+        bufferWithLookup.setLookupBuffer(new byte[]{7,7,7,7});
+        assertEquals(4,bufferWithLookup.read(bytes));
+        
+    }
+    
 }
