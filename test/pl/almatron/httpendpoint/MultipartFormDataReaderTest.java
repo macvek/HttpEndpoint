@@ -117,5 +117,30 @@ public class MultipartFormDataReaderTest {
         reader.withOnFieldHandler(onFieldHandler).readFromStream(stream);
     }
     
+    @Test
+    public void shouldLoadContentFirstOnlyPartialBoundaryWithLimitAndWithFullRead() throws IOException {
+        InputStream stream = new ByteArrayInputStream(
+                        ("--XXXXXXXX\r\n" +
+                        "Content-Disposition: form-data; name=\"fieldname\"\r\n" +
+                        "\r\n" +
+                        "-----X-----X-----X-----X\r\n" + 
+                        "--XXXXXXXX--\r\n").getBytes());
+        
+        
+        final MultipartFormDataReader.OnFieldHandler onFieldHandler = (List<String> headers, InputStream value) -> {
+            byte[] bytes = new byte[128];
+            int size = 0;
+            size += value.read(bytes,0, 1);
+            size += value.read(bytes,1, 2);
+            size += value.read(bytes,3, 128-3);
+            
+
+            assertEquals("-----X-----X-----X-----X\r\n", new String(bytes,0,size));
+            
+        };
+        
+        reader.withOnFieldHandler(onFieldHandler).readFromStream(stream);
+    }
+    
     
 }
