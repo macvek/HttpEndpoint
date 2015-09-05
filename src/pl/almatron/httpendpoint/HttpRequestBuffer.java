@@ -70,6 +70,10 @@ public class HttpRequestBuffer {
         return headers;
     }
 
+    public BufferedInputStream getRequestBufferedInputStream() {
+        return bufferedInputStream;
+    }
+
     private void initializeInvocationScanner() {
         invocationScanner = new Scanner(headersInputStream);
         invocationScanner.useDelimiter(END_OF_LINE);

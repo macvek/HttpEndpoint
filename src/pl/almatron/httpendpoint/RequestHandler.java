@@ -2,6 +2,7 @@ package pl.almatron.httpendpoint;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 
 /**
  * HttpEndpoint
@@ -14,7 +15,7 @@ public class RequestHandler {
     private final static String BOUNDARY = "boundary=";
     
     void handleRequest(HttpRequestBuffer requestBuffer, HttpResponseBuffer responseBuffer) throws IOException {
-
+        long startTime = System.nanoTime();
         requestBuffer.readFirstLine();
         System.out.println("Method:" + requestBuffer.getMethod());
         System.out.println("Query:" + requestBuffer.getQuery());
@@ -42,8 +43,17 @@ public class RequestHandler {
         }
 
         if ("POST".equals(requestBuffer.getMethod())) {
-            if (false && boundary != null) {
+            if (boundary != null) {
                 MultipartFormDataReader multipartFormDataReader = new MultipartFormDataReader(boundary);
+                
+                multipartFormDataReader.withOnFieldHandler((List<String> headers, InputStream content) -> {
+                    byte[] contentBytes = new byte[1024];
+                    int read = content.read(contentBytes);
+                    System.out.println("RECEIVED::");
+                    System.out.println(new String(contentBytes,0,read));
+                });
+                
+                multipartFormDataReader.readFromStream(requestBuffer.getRequestBufferedInputStream());
                 
             }
             else
@@ -65,6 +75,7 @@ public class RequestHandler {
         }
         responseBuffer.send();
         System.out.println("END OF RESPONSE!");
+        System.out.println("Processing time : "+(System.nanoTime() - startTime)/1000000000.0);
     }
 
     private byte[] readFromStream(String request) throws IOException {
