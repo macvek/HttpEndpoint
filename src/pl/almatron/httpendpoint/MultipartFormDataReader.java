@@ -15,6 +15,8 @@ public class MultipartFormDataReader {
     private final int bufferSize;
     private final byte[] boundaryBytes;
     private final byte[] boundaryReadBuffer;
+    private int boundaryOverloadedSize;
+    private int boundaryOverloadedLimit;
     private OnFieldHandler onFieldHandler;
     private InputStream inputStream;
     private static final CompareByteArrays ENDLINE = new CompareByteArrays(new byte[] {'\r','\n' });
@@ -127,7 +129,8 @@ public class MultipartFormDataReader {
     }
     
     public class UpToBoundaryInputStream extends FilterInputStream {
-
+        private boolean isEmpty;
+        
         public UpToBoundaryInputStream() {
             super(null);
         }
@@ -135,15 +138,40 @@ public class MultipartFormDataReader {
         @Override
         public int read(byte[] bytes, int offset, int length) throws IOException {
             int newOffset = offset;
-            for(;;) {
-                int bytesRead = fillBoundaryReadBuffer();
-                System.arraycopy(boundaryReadBuffer, 0, bytes, newOffset, bytesRead);
-                newOffset += bytesRead; 
-                
-                if (bytesRead < bufferSize) {
-                    break;
+            int maxOffset = offset + length;
+            if (boundaryOverloadedSize > 0) {
+                int bytesToReadFromOverload = Math.min(boundaryOverloadedSize, length);
+                System.arraycopy(boundaryReadBuffer, boundaryOverloadedLimit - boundaryOverloadedSize, bytes, newOffset, bytesToReadFromOverload);
+                boundaryOverloadedSize -= bytesToReadFromOverload;
+                newOffset += bytesToReadFromOverload;
+                if (maxOffset == newOffset) {
+                    return bytesToReadFromOverload;
                 }
             }
+            
+            if (isEmpty) {
+                return 0;
+            }
+            
+            do {
+                int bytesRead = fillBoundaryReadBuffer();
+                isEmpty = bytesRead < bufferSize;
+                
+                if (newOffset + bytesRead > maxOffset) {
+                    int bytesSizeToCopyToOutput = maxOffset - newOffset;
+                    boundaryOverloadedLimit = bytesRead;
+                    boundaryOverloadedSize = bytesRead - bytesSizeToCopyToOutput;
+                    System.arraycopy(boundaryReadBuffer, 0, bytes, newOffset, bytesSizeToCopyToOutput);
+                    newOffset = maxOffset;
+                    break;
+                }
+                else {
+                    System.arraycopy(boundaryReadBuffer, 0, bytes, newOffset, bytesRead);
+                    newOffset += bytesRead; 
+                }
+
+            }
+            while(! isEmpty);
             return newOffset - offset;
         }
 
