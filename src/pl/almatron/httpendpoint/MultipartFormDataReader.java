@@ -149,11 +149,7 @@ public class MultipartFormDataReader {
                 }
             }
             
-            if (isEmpty) {
-                return 0;
-            }
-            
-            do {
+            while (!isEmpty) {
                 int bytesRead = fillBoundaryReadBuffer();
                 isEmpty = bytesRead < bufferSize;
                 
@@ -171,7 +167,6 @@ public class MultipartFormDataReader {
                 }
 
             }
-            while(! isEmpty);
             return newOffset - offset;
         }
 
