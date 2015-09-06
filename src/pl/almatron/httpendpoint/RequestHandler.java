@@ -1,8 +1,18 @@
 package pl.almatron.httpendpoint;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.TransformerFactoryConfigurationError;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.transform.stream.StreamSource;
 
 /**
  * HttpEndpoint
@@ -13,7 +23,16 @@ public class RequestHandler {
     private final static String CONTENT_LENGTH = "Content-Length";
     private final static String CONTENT_TYPE = "Content-Type";
     private final static String BOUNDARY = "boundary=";
-    
+    private static Transformer transformer;
+    {
+        try {
+            initTransformer();
+        } catch (TransformerFactoryConfigurationError ex) {
+            Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (TransformerConfigurationException ex) {
+            Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
     void handleRequest(HttpRequestBuffer requestBuffer, HttpResponseBuffer responseBuffer) throws IOException {
         long startTime = System.nanoTime();
         requestBuffer.readFirstLine();
@@ -69,6 +88,14 @@ public class RequestHandler {
             responseBuffer.setContentType("image/png");
             responseBuffer.setResponseBody(readFromStream("/image.png"));
         }
+        else if ("/transform.html".equals(requestBuffer.getQuery())) {
+            responseBuffer.setContentType("text/html");
+            try {
+                responseBuffer.setResponseBody(readXslt());
+            } catch (TransformerException ex) {
+                Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
         else {
             responseBuffer.setContentType("text/html");
             responseBuffer.setResponseBody(readFromStream("/helloworld.html"));
@@ -76,6 +103,21 @@ public class RequestHandler {
         responseBuffer.send();
         System.out.println("END OF RESPONSE!");
         System.out.println("Processing time : "+(System.nanoTime() - startTime)/1000000000.0);
+    }
+
+    private byte[] readXslt() throws TransformerException {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(4096);
+        
+        StreamSource source = new StreamSource(getClass().getResourceAsStream("/source.xml"));
+        StreamResult result = new StreamResult(byteArrayOutputStream);
+        transformer.transform(source, result);
+        return byteArrayOutputStream.toByteArray();
+    }
+
+    private void initTransformer() throws TransformerFactoryConfigurationError, TransformerConfigurationException {
+        StreamSource stylesource = new StreamSource(getClass().getResourceAsStream("/stylesheet.xsl"));
+        TransformerFactory tFactory = TransformerFactory.newInstance();
+        transformer = tFactory.newTransformer(stylesource);
     }
 
     private byte[] readFromStream(String request) throws IOException {
