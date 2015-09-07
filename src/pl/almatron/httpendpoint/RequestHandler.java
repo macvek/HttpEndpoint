@@ -10,7 +10,6 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.TransformerFactoryConfigurationError;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
@@ -23,18 +22,11 @@ public class RequestHandler {
     private final static String CONTENT_LENGTH = "Content-Length";
     private final static String CONTENT_TYPE = "Content-Type";
     private final static String BOUNDARY = "boundary=";
-    private static Transformer transformer;
-    {
-        try {
-            initTransformer();
-        } catch (TransformerFactoryConfigurationError ex) {
-            Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (TransformerConfigurationException ex) {
-            Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
+    private Transformer transformer;
+    
     void handleRequest(HttpRequestBuffer requestBuffer, HttpResponseBuffer responseBuffer) throws IOException {
         long startTime = System.nanoTime();
+        initTransformer();
         requestBuffer.readFirstLine();
         System.out.println("Method:" + requestBuffer.getMethod());
         System.out.println("Query:" + requestBuffer.getQuery());
@@ -108,16 +100,20 @@ public class RequestHandler {
     private byte[] readXslt() throws TransformerException {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(4096);
         
-        StreamSource source = new StreamSource(getClass().getResourceAsStream("/source.xml"));
+        StreamSource source = new StreamSource(getClass().getResourceAsStream("/panel01/triggerservice.xml"));
         StreamResult result = new StreamResult(byteArrayOutputStream);
         transformer.transform(source, result);
         return byteArrayOutputStream.toByteArray();
     }
 
-    private void initTransformer() throws TransformerFactoryConfigurationError, TransformerConfigurationException {
-        StreamSource stylesource = new StreamSource(getClass().getResourceAsStream("/stylesheet.xsl"));
+    private void initTransformer() {
+        StreamSource stylesource = new StreamSource(getClass().getResourceAsStream("/transformers/workbench.xsl"));
         TransformerFactory tFactory = TransformerFactory.newInstance();
-        transformer = tFactory.newTransformer(stylesource);
+        try {
+            transformer = tFactory.newTransformer(stylesource);
+        } catch (TransformerConfigurationException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     private byte[] readFromStream(String request) throws IOException {
