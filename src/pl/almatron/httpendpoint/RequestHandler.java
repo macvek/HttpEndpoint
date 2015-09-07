@@ -1,17 +1,10 @@
 package pl.almatron.httpendpoint;
 
-import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerConfigurationException;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.stream.StreamResult;
-import javax.xml.transform.stream.StreamSource;
 
 /**
  * HttpEndpoint
@@ -22,18 +15,11 @@ public class RequestHandler {
     private final static String CONTENT_LENGTH = "Content-Length";
     private final static String CONTENT_TYPE = "Content-Type";
     private final static String BOUNDARY = "boundary=";
-    private Transformer transformer;
     
     void handleRequest(HttpRequestBuffer requestBuffer, HttpResponseBuffer responseBuffer) throws IOException {
-        long startTime = System.nanoTime();
-        initTransformer();
         requestBuffer.readFirstLine();
-        System.out.println("Method:" + requestBuffer.getMethod());
-        System.out.println("Query:" + requestBuffer.getQuery());
-        System.out.println("Protocol:" + requestBuffer.getProtocol());
 
         String contentLength = null;
-        String contentType = null;
         String boundary = null;
         
         for (String header : requestBuffer.readHeaders()) {
@@ -43,14 +29,10 @@ public class RequestHandler {
                 contentLength = keyAndValue[1];
             }
             else if (CONTENT_TYPE.equals(keyAndValue[0])) {
-                contentType = parseContentType(keyAndValue[1]);
-                if ("multipart/form-data".equals(contentType)) {
+                if ("multipart/form-data".equals(parseContentType(keyAndValue[1]))) {
                     boundary = parseBoundary(keyAndValue[1]);
                 }
             }
-            
-            
-            System.out.println(header);
         }
 
         if ("POST".equals(requestBuffer.getMethod())) {
@@ -58,73 +40,63 @@ public class RequestHandler {
                 MultipartFormDataReader multipartFormDataReader = new MultipartFormDataReader(boundary);
                 
                 multipartFormDataReader.withOnFieldHandler((List<String> headers, InputStream content) -> {
-                    byte[] contentBytes = new byte[1024];
+                    String fileName = "";
+                    for (String header : headers) {
+                        String fileInvocation = "Content-Disposition: form-data; name=\"filefield\"; filename=";
+                        if (header.contains(fileInvocation)) {
+                            fileName = header.replace(fileInvocation, "").replace("\"","").replace("\\","").replace("/", "");
+                        }
+                    }
+                    byte[] contentBytes = new byte[1024*1024];
+                    
                     int read = content.read(contentBytes);
-                    System.out.println("RECEIVED::");
-                    System.out.println(new String(contentBytes,0,read));
+                    if (read == contentBytes.length) {
+                        throw new RuntimeException("Upload limit exceeded");
+                    }
+                    
+                    if (!fileName.isEmpty()) {
+                        FileOutputStream uploaded = new FileOutputStream(fileName);
+                        uploaded.write(contentBytes, 0, read);
+                    }
+                    
                 });
                 
                 multipartFormDataReader.readFromStream(requestBuffer.getRequestBufferedInputStream());
-                
             }
             else
             if (contentLength != null) {
-                requestBuffer.setupBodyLength(Integer.parseInt(contentLength));
-                System.out.println(new String(requestBuffer.readBody()));
+                final int contentLengthVal = Integer.parseInt(contentLength);
+                if (contentLengthVal > 4096) {
+                    throw new RuntimeException("ContentLength exceeds 4096 bytes");
+                }
+                requestBuffer.setupBodyLength(contentLengthVal);
             } else {
-                throw new RuntimeException("Pusty contentLength");
+                throw new RuntimeException("Empty ContentLength");
             }
         }
         
-        if ("/image.png".equals(requestBuffer.getQuery())) {
-            responseBuffer.setContentType("image/png");
-            responseBuffer.setResponseBody(readFromStream("/image.png"));
+        String queryFile = requestBuffer.getQuery();
+        if (queryFile.isEmpty() || "/".equals(queryFile)) {
+            queryFile = "welcome.html";
         }
-        else if ("/transform.html".equals(requestBuffer.getQuery())) {
-            responseBuffer.setContentType("text/html");
-            try {
-                responseBuffer.setResponseBody(readXslt());
-            } catch (TransformerException ex) {
-                Logger.getLogger(RequestHandler.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        
+        URL resourceURL = getClass().getResource("/public/"+queryFile);
+        final String mime;
+        final InputStream responseStream;
+        if (resourceURL != null) {
+            responseStream = resourceURL.openStream();
+            mime = MIMEType.forType(fileExtension(queryFile));
         }
         else {
-            responseBuffer.setContentType("text/html");
-            responseBuffer.setResponseBody(readFromStream("/helloworld.html"));
+            responseStream = status404Stream();
+            responseBuffer.setStatus(404);
+            mime = MIMEType.forType("html");
         }
-        responseBuffer.send();
-        System.out.println("END OF RESPONSE!");
-        System.out.println("Processing time : "+(System.nanoTime() - startTime)/1000000000.0);
-    }
-
-    private byte[] readXslt() throws TransformerException {
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(4096);
         
-        StreamSource source = new StreamSource(getClass().getResourceAsStream("/panel01/triggerservice.xml"));
-        StreamResult result = new StreamResult(byteArrayOutputStream);
-        transformer.transform(source, result);
-        return byteArrayOutputStream.toByteArray();
-    }
+        responseBuffer.setContentType(mime);
+        responseBuffer.setResponseBodyAsStream(responseStream);
 
-    private void initTransformer() {
-        StreamSource stylesource = new StreamSource(getClass().getResourceAsStream("/transformers/workbench.xsl"));
-        TransformerFactory tFactory = TransformerFactory.newInstance();
-        try {
-            transformer = tFactory.newTransformer(stylesource);
-        } catch (TransformerConfigurationException ex) {
-            throw new RuntimeException(ex);
-        }
-    }
-
-    private byte[] readFromStream(String request) throws IOException {
-        byte[] buffer = new byte[1024*1024];
-        int readCount;
-        try (InputStream stream = getClass().getResourceAsStream(request)) {
-            readCount = stream.read(buffer);
-        }
-        byte[] readBuffer = new byte[readCount];
-        System.arraycopy(buffer, 0, readBuffer, 0, readCount);
-        return readBuffer;
+        responseBuffer.send();
     }
 
     private String[] splitHeader(String header) {
@@ -154,5 +126,14 @@ public class RequestHandler {
         }
         
         return contentType.substring(indexOf+BOUNDARY.length());
+    }
+
+    private String fileExtension(String queryFile) {
+        String[] split = queryFile.split("\\.");
+        return split[split.length-1];
+    }
+
+    private InputStream status404Stream() {
+        return getClass().getResourceAsStream("/special/status404.html");
     }
 }
